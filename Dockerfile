@@ -1,10 +1,12 @@
-FROM node:10-alpine
+FROM node:18
 
-RUN mkdir -p /home/node/app/node_modules && chown -R node:node /home/node/app
+RUN mkdir -p /teste_tecnico_shopper/node_modules && chown -R node:node /teste_tecnico_shopper
 
-WORKDIR /home/node/app
+WORKDIR /teste_tecnico_shopper
 
 COPY package*.json ./
+
+RUN chown -R node:node /teste_tecnico_shopper
 
 USER node
 
@@ -14,4 +16,4 @@ COPY --chown=node:node . .
 
 EXPOSE 8080
 
-CMD [ "node", "app.js" ]
+CMD [ "npm", "start" ]
