@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import {calldb, addUser, getUserFromCode, addMeasure, getMeasureFromId} from "./dbconfig";
+import {getUserFromCode, addMeasure, getMeasureFromId, confirmMeasure, getMeasuresFromUser, Measure} from "./dbconfig";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import path from "path";
@@ -38,6 +38,10 @@ app.patch('/confirm', async (req, res) => {
   if (measure.has_confirmed) {
     res.status(404).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
   }
+
+  await confirmMeasure(measure.measure_uuid, Number.parseInt(confirmed_value))
+
+  res.status(200).json({success: true})
 });
 
 app.post('/upload', verifyDataTypes, async (req, res) => {
@@ -82,6 +86,34 @@ app.post('/upload', verifyDataTypes, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
   }
+});
+
+app.get('/:customer_code/list', async (req, res) => {
+  const customer_code = req.params.customer_code;
+  const user_array = await getUserFromCode(customer_code)
+
+  if (user_array.length == 0) {
+    res.status(404).json({error_code: "NO_USER_FOUND", error_description: `Nenhum usuário encontrado com o código: ${customer_code}`})
+  }
+
+  const user = user_array[0];
+
+  const measures = await getMeasuresFromUser(user.id);
+
+  if (measures.length == 0 || (measures as Measure[])[0].has_confirmed === undefined) {
+    res.status(404).json({error_code: "MEASURES_NOT_FOUND", error_description: "Nenhuma leitura encontrada"})
+  }
+
+  const transformed_measures = (measures as Measure[]).map(measure => ({
+    measure_uuid: measure.measure_uuid.toString(),
+    measure_datetime: measure.measure_datetime,
+    measure_type: measure.measure_type,
+    has_confirmed: measure.has_confirmed,
+    image_url: measure.image_url,
+  }));
+
+  res.status(202).json({customer_code: customer_code, measures: transformed_measures})
+
 });
 
 app.listen(port, () => {

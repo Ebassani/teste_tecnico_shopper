@@ -25,7 +25,7 @@ type User = {
     customer_code: string;
 }
 
-type Measure = {
+export type Measure = {
     measure_uuid: number;
     user_id: number;
     measure_type: string;
@@ -97,8 +97,7 @@ export async function confirmMeasure(measure_id: number, value: number) {
 
 }
 
-export async function getMeasuresFromUser(customer_code: string) {
-    const user_uid = (await getUserFromCode(customer_code))
+export async function getMeasuresFromUser(user_uid: number) {
     
     const [results] = await pool.query<RowDataPacket[] & Measure[]>(
         "SELECT * FROM measures WHERE user_id = (?);",
