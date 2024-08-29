@@ -1,12 +1,13 @@
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_code VARCHAR(100)
+    customer_code VARCHAR(100) UNIQUE NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS measures (
     measure_uuid INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT,
     measure_type VARCHAR(10),
+    measure_value INT,
     measure_datetime DATETIME,
     image_url VARCHAR(250),
     has_confirmed BOOLEAN,
