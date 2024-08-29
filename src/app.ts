@@ -2,6 +2,9 @@ import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
 import {calldb, addUser, getUserFromCode} from "./dbconfig";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import path from "path";
+import fs from "fs-extra"
 
 
 dotenv.config()
@@ -22,22 +25,42 @@ app.get('/', async (req, res) => {
 });
 
 app.post('/upload', verifyDataTypes, async (req, res) => {
-
-
   try {
+    const {image} = req.body;
+
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+    const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+    });
+
     const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
 
-    const uploadResponse = await fileManager.uploadFile("jetpack.jpg", {
-      mimeType: "image/jpeg",
-      displayName: "Jetpack drawing",
+    const imgpath = await createTempImageFile(image)
+
+    const uploadResponse = await fileManager.uploadFile(imgpath, {
+      mimeType: "image/png",
+      displayName: "Measure",
     });
     
+    const result = await model.generateContent([
+      {
+          fileData: {
+          mimeType: uploadResponse.file.mimeType,
+          fileUri: uploadResponse.file.uri
+          }
+      },
+      { text: "Extract the numerical value on the image, send only the number as response" },
+    ]);
 
-    console.log(`Uploaded file ${uploadResponse.file.displayName} as: ${uploadResponse.file.uri}`);
+    console.log(result.response.text())
+
+    await fs.remove(imgpath);
+
+    res.send(`Uploaded file ${uploadResponse.file.displayName} as: ${uploadResponse.file.uri}`);
 
   } catch (error) {
-      // Handle errors in the request to the external API
-      return res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
+    res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
   }
 });
 
@@ -71,4 +94,17 @@ function verifyDataTypes(req: Request, res: Response, next: NextFunction) {
   }
 
   next();
+}
+
+async function createTempImageFile(base64: string) {
+  try {
+    const tempFilePath = path.join(__dirname, 'tempImage.png');
+    
+    const buffer = Buffer.from(base64, 'base64');
+    await fs.writeFile(tempFilePath, buffer);
+
+    return tempFilePath
+  } catch (error) {
+    return ""
+  }
 }
