@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import {getUserFromCode, addMeasure, getMeasureFromId, confirmMeasure, getMeasuresFromUser, Measure} from "./dbconfig";
+import {getUserFromCode, addMeasure, getMeasureFromId, confirmMeasure, getMeasuresFromUser, Measure, getSortedMeasuresFromUser} from "./dbconfig";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import path from "path";
@@ -18,12 +18,6 @@ if (!GEMINI_API_KEY) {
   throw new Error('GEMINI_API_KEY não foi definido');
 }
 
-app.get('/', async (req, res) => {
-  const result = await getUserFromCode('test_user');
-  console.log(result)
-  res.send(`${result}`);
-});
-
 app.patch('/confirm', async (req, res) => {
   const { measure_uuid, confirmed_value } = req.body;
 
@@ -38,8 +32,8 @@ app.patch('/confirm', async (req, res) => {
   if (measure.has_confirmed) {
     res.status(404).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
   }
-
-  await confirmMeasure(measure.measure_uuid, Number.parseInt(confirmed_value))
+  
+  await confirmMeasure(measure.measure_uuid, Number.parseInt(confirmed_value))  
 
   res.status(200).json({success: true})
 });
@@ -73,15 +67,14 @@ app.post('/upload', verifyDataTypes, async (req, res) => {
       },
       { text: "Extract the numerical value on the image, send only the number as response" },
     ]);
-
     
     const value = Number.parseInt(result.response.text());
 
     await fs.remove(img_path);
 
-    const measure_id = await addMeasure(customer_code, value,measure_datetime, temp_link, measure_type)
+    const measure_id = await addMeasure(customer_code, value,new Date(measure_datetime), temp_link, measure_type);
 
-    res.status(200).json({image_url: temp_link, measure_value: value, measure_uuid: (measure_id.toString)});
+    res.status(200).json({image_url: temp_link, measure_value: value, measure_uuid: (measure_id.toString())});
 
   } catch (error) {
     res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
@@ -92,13 +85,34 @@ app.get('/:customer_code/list', async (req, res) => {
   const customer_code = req.params.customer_code;
   const user_array = await getUserFromCode(customer_code)
 
+  const measure_type = req.query.measure_type;
+  let sort = false;
+
+  if (measure_type){
+    if (measure_type !== "WATER" && measure_type !== "GAS"){
+      res.status(400).json({
+        error_code: "INVALID_TYPE",
+        error_description: "Tipo de medição não permitida"
+        })
+    } else {
+      sort = true;
+    }
+  }
+
   if (user_array.length == 0) {
-    res.status(404).json({error_code: "NO_USER_FOUND", error_description: `Nenhum usuário encontrado com o código: ${customer_code}`})
+    res.status(404).json({error_code: "MEASURES_NOT_FOUND", error_description: "Nenhuma leitura encontrada"})
   }
 
   const user = user_array[0];
 
-  const measures = await getMeasuresFromUser(user.id);
+  let measures;
+
+  if (sort && measure_type) {
+    measures = await getSortedMeasuresFromUser(user.id, measure_type.toString());
+  } else {
+    measures = await getMeasuresFromUser(user.id);
+  }
+
 
   if (measures.length == 0 || (measures as Measure[])[0].has_confirmed === undefined) {
     res.status(404).json({error_code: "MEASURES_NOT_FOUND", error_description: "Nenhuma leitura encontrada"})
@@ -130,7 +144,7 @@ function verifyDataTypes(req: Request, res: Response, next: NextFunction) {
   const base_64_pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
   if (image.length % 4 !== 0 || !base_64_pattern.test(image)) {
-    return res.status(400).json({ error: "'image' must be a string." });
+    return res.status(400).json({ error: "'image' not base64 be a string." });
   }
 
   if (typeof customer_code !== 'string') {

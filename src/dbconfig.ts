@@ -1,3 +1,4 @@
+import { log } from 'console';
 import mysql, { RowDataPacket } from 'mysql2'
 
 const {DB_HOST, DB_USER, DB_PASSWORD, DB_NAME} = process.env;
@@ -71,9 +72,9 @@ export async function addMeasure(customer_code: string, measure_value: number, m
     }
     
     const [result] = await pool.query(`
-        INSERT INTO measures (user_id, measure_type, measure_value, measure_datetime, img_url)
-        VALUES (?)
-        `, [user_uid, measure_type, measure_value, measure_datetime, image_url]);
+        INSERT INTO measures (user_id, measure_type,measure_datetime, measure_value, image_url)
+        VALUES (?,?,?,?,?)
+        `, [user_uid, measure_type, measure_datetime, measure_value, image_url]);
 
     const insert = result as Insert_result;
     
@@ -92,7 +93,7 @@ export async function getMeasureFromId(measure_id: string) {
 
 export async function confirmMeasure(measure_id: number, value: number) {
     const [result] = await pool.query(
-        "UPDATE measures SET measure_value = (?), has_confirmed = TRUE  WHERE measure_uuid = (?);",
+        "UPDATE measures SET measure_value = (?), has_confirmed = TRUE WHERE measure_uuid = (?);",
     [value, measure_id]);
 
 }
@@ -106,6 +107,11 @@ export async function getMeasuresFromUser(user_uid: number) {
     return results
 }
 
-export async function patchConfirmMeasure(measure_id: number, confirmed_value: number) {
+export async function getSortedMeasuresFromUser(user_uid: number, type: string) {
     
+    const [results] = await pool.query<RowDataPacket[] & Measure[]>(
+        "SELECT * FROM measures WHERE user_id = (?) AND measure_type = ?;",
+    [user_uid, type]);
+    
+    return results
 }
