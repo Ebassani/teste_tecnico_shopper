@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import {calldb, addUser, getUserFromCode} from "./dbconfig";
+import {calldb, addUser, getUserFromCode, addMeasure, getMeasureFromId} from "./dbconfig";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import path from "path";
@@ -24,40 +24,60 @@ app.get('/', async (req, res) => {
   res.send(`${result}`);
 });
 
+app.patch('/confirm', async (req, res) => {
+  const { measure_uuid, confirmed_value } = req.body;
+
+  const measure_array = await getMeasureFromId(measure_uuid);
+
+  if (measure_array.length == 0){
+    res.status(404).json({error_code: "MEASURE_NOT_FOUND", error_description: "Leitura do mês já realizada"})
+  }
+
+  const measure = measure_array[0];
+
+  if (measure.has_confirmed) {
+    res.status(404).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
+  }
+});
+
 app.post('/upload', verifyDataTypes, async (req, res) => {
   try {
-    const {image} = req.body;
+    const { image, customer_code, measure_datetime, measure_type } = req.body;
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const gen_ai = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const file_manager = new GoogleAIFileManager(GEMINI_API_KEY);
 
-    const model = genAI.getGenerativeModel({
+    const model = gen_ai.getGenerativeModel({
         model: "gemini-1.5-flash",
     });
 
-    const fileManager = new GoogleAIFileManager(GEMINI_API_KEY);
+    const img_path = await createTempImageFile(image)
 
-    const imgpath = await createTempImageFile(image)
-
-    const uploadResponse = await fileManager.uploadFile(imgpath, {
+    const uploadResponse = await file_manager.uploadFile(img_path, {
       mimeType: "image/png",
       displayName: "Measure",
     });
     
+    const temp_link = uploadResponse.file.uri;
+
     const result = await model.generateContent([
       {
           fileData: {
           mimeType: uploadResponse.file.mimeType,
-          fileUri: uploadResponse.file.uri
+          fileUri: temp_link
           }
       },
       { text: "Extract the numerical value on the image, send only the number as response" },
     ]);
 
-    console.log(result.response.text())
+    
+    const value = Number.parseInt(result.response.text());
 
-    await fs.remove(imgpath);
+    await fs.remove(img_path);
 
-    res.send(`Uploaded file ${uploadResponse.file.displayName} as: ${uploadResponse.file.uri}`);
+    const measure_id = await addMeasure(customer_code, value,measure_datetime, temp_link, measure_type)
+
+    res.status(200).json({image_url: temp_link, measure_value: value, measure_uuid: (measure_id.toString)});
 
   } catch (error) {
     res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
@@ -75,9 +95,9 @@ function verifyDataTypes(req: Request, res: Response, next: NextFunction) {
     return res.status(400).json({ error: "'image' must be a string." });
   }
 
-  const base64Pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+  const base_64_pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
-  if (image.length % 4 !== 0 || !base64Pattern.test(image)) {
+  if (image.length % 4 !== 0 || !base_64_pattern.test(image)) {
     return res.status(400).json({ error: "'image' must be a string." });
   }
 
@@ -98,13 +118,13 @@ function verifyDataTypes(req: Request, res: Response, next: NextFunction) {
 
 async function createTempImageFile(base64: string) {
   try {
-    const tempFilePath = path.join(__dirname, 'tempImage.png');
+    const temp_file_path = path.join(__dirname, 'tempImage.png');
     
     const buffer = Buffer.from(base64, 'base64');
-    await fs.writeFile(tempFilePath, buffer);
+    await fs.writeFile(temp_file_path, buffer);
 
-    return tempFilePath
+    return temp_file_path
   } catch (error) {
-    return ""
+    throw Error()
   }
 }

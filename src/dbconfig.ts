@@ -60,9 +60,15 @@ export async function getUserFromCode(customer_code: string) {
 
 
 export async function addMeasure(customer_code: string, measure_value: number, measure_datetime: Date, image_url: string, measure_type: string) {
-    const user_uid = (await getUserFromCode(customer_code))
+    const user_array = await getUserFromCode(customer_code)
 
+    let user_uid = 0;
 
+    if (user_array.length == 0) {
+        user_uid = await addUser(customer_code);
+    } else {
+        user_uid = user_array[0].id;
+    }
     
     const [result] = await pool.query(`
         INSERT INTO measures (user_id, measure_type, measure_value, measure_datetime, img_url)
@@ -70,7 +76,25 @@ export async function addMeasure(customer_code: string, measure_value: number, m
         `, [user_uid, measure_type, measure_value, measure_datetime, image_url]);
 
     const insert = result as Insert_result;
+    
     return insert.insertId
+}
+
+export async function getMeasureFromId(measure_id: string) {
+    const id_as_number = parseInt(measure_id);
+    
+    const [result] = await pool.query<RowDataPacket[] & Measure[]>(
+        "SELECT * FROM measures WHERE measure_uuid = (?);",
+    [id_as_number]);
+    
+    return result
+}
+
+export async function confirmMeasure(measure_id: number, value: number) {
+    const [result] = await pool.query(
+        "UPDATE measures SET measure_value = (?), has_confirmed = TRUE  WHERE measure_uuid = (?);",
+    [value, measure_id]);
+
 }
 
 export async function getMeasuresFromUser(customer_code: string) {

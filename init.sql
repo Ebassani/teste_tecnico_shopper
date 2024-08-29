@@ -10,6 +10,6 @@ CREATE TABLE IF NOT EXISTS measures (
     measure_value INT,
     measure_datetime DATETIME,
     image_url VARCHAR(250),
-    has_confirmed BOOLEAN,
+    has_confirmed BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
