@@ -38,7 +38,7 @@ app.patch('/confirm', verifyDataTypesConfirm, async (req, res) => {
   res.status(200).json({success: true})
 });
 
-app.get('/upload', async (req, res) => {
+app.post('/upload', verifyDataTypesUpload, async (req, res) => {
   try {
     const { image, customer_code, measure_datetime, measure_type } = req.body;
 
