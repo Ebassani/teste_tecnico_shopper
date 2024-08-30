@@ -1,4 +1,3 @@
-import { log } from 'console';
 import mysql, { RowDataPacket } from 'mysql2'
 
 const {DB_HOST, DB_USER, DB_PASSWORD, DB_NAME} = process.env;
@@ -29,6 +28,7 @@ type User = {
 export type Measure = {
     measure_uuid: number;
     user_id: number;
+    measure_value: number;
     measure_type: string;
     measure_datetime: Date;
     image_url: string;

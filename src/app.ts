@@ -18,7 +18,7 @@ if (!GEMINI_API_KEY) {
   throw new Error('GEMINI_API_KEY não foi definido');
 }
 
-app.patch('/confirm', async (req, res) => {
+app.patch('/confirm', verifyDataTypesConfirm, async (req, res) => {
   const { measure_uuid, confirmed_value } = req.body;
 
   const measure_array = await getMeasureFromId(measure_uuid);
@@ -33,12 +33,12 @@ app.patch('/confirm', async (req, res) => {
     res.status(404).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
   }
   
-  await confirmMeasure(measure.measure_uuid, Number.parseInt(confirmed_value))  
+  await confirmMeasure(measure.measure_uuid, confirmed_value)  
 
   res.status(200).json({success: true})
 });
 
-app.post('/upload', verifyDataTypes, async (req, res) => {
+app.post('/upload', verifyDataTypesUpload, async (req, res) => {
   try {
     const { image, customer_code, measure_datetime, measure_type } = req.body;
 
@@ -77,7 +77,7 @@ app.post('/upload', verifyDataTypes, async (req, res) => {
     res.status(200).json({image_url: temp_link, measure_value: value, measure_uuid: (measure_id.toString())});
 
   } catch (error) {
-    res.status(500).json({ error: 'Failed to connect to external API.', details: "error.message" });
+    res.status(500).json({ error_code: "UNEXPECTED_ERROR", error_description: "Possível falha ao se conectar com a API do GEMINI" });
   }
 });
 
@@ -86,18 +86,6 @@ app.get('/:customer_code/list', async (req, res) => {
   const user_array = await getUserFromCode(customer_code)
 
   const measure_type = req.query.measure_type;
-  let sort = false;
-
-  if (measure_type){
-    if (measure_type !== "WATER" && measure_type !== "GAS"){
-      res.status(400).json({
-        error_code: "INVALID_TYPE",
-        error_description: "Tipo de medição não permitida"
-        })
-    } else {
-      sort = true;
-    }
-  }
 
   if (user_array.length == 0) {
     res.status(404).json({error_code: "MEASURES_NOT_FOUND", error_description: "Nenhuma leitura encontrada"})
@@ -107,7 +95,13 @@ app.get('/:customer_code/list', async (req, res) => {
 
   let measures;
 
-  if (sort && measure_type) {
+  if (measure_type) {
+    if (measure_type !== "WATER" && measure_type !== "GAS"){
+      res.status(400).json({
+        error_code: "INVALID_TYPE",
+        error_description: "Tipo de medição não permitida"
+        })
+    }
     measures = await getSortedMeasuresFromUser(user.id, measure_type.toString());
   } else {
     measures = await getMeasuresFromUser(user.id);
@@ -134,32 +128,42 @@ app.listen(port, () => {
   console.log(`http://localhost:${port}`);
 });
 
-function verifyDataTypes(req: Request, res: Response, next: NextFunction) {
+function verifyDataTypesUpload(req: Request, res: Response, next: NextFunction) {
   const { image, customer_code, measure_datetime, measure_type } = req.body;
-
-  if (typeof image !== 'string') {
-    return res.status(400).json({ error: "'image' must be a string." });
-  }
 
   const base_64_pattern = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
-  if (image.length % 4 !== 0 || !base_64_pattern.test(image)) {
-    return res.status(400).json({ error: "'image' not base64 be a string." });
+  if (typeof image !== 'string' || image.length % 4 !== 0 || !base_64_pattern.test(image)) {
+    return res.status(400).json({ error_code: "INVALID_DATA", error_description: "image não é uma string base64" });
   }
 
   if (typeof customer_code !== 'string') {
-    return res.status(400).json({ error: "'customer_code' must be a string or a number." });
+    return res.status(400).json({ error_code: "INVALID_DATA", error_description: "customer_code não é do tipo \'string\'" });
   }
 
   if (isNaN(Date.parse(measure_datetime))) {
-    return res.status(400).json({ error: "'measure_datetime' must be a valid datetime string." });
+    return res.status(400).json({ error_code: "INVALID_DATA", error_description: "measure_datetime não é do tipo \'DATETIME\'" });
   }
 
   if (measure_type !== 'WATER' && measure_type !== 'GAS') {
-    return res.status(400).json({ error: "'measure_type' must be either 'WATER' or 'GAS'." });
+    return res.status(400).json({ error_code: "INVALID_DATA", error_description: "measure_type precisa ser 'WATER' ou 'GAS'." });
   }
 
   next();
+}
+
+function verifyDataTypesConfirm(req: Request, res: Response, next: NextFunction) {
+  const { measure_uuid, confirmed_value } = req.body;
+
+  if (typeof measure_uuid !== 'string') {
+    return res.status(404).json({error_code: "INVALID_DATA", error_description: "measure_uuid não é do tipo \'string\'"})
+  }
+
+  if (typeof confirmed_value !== 'number') {
+    return res.status(404).json({error_code: "INVALID_DATA", error_description: "confirmed_value não é do tipo \'number\'"})
+  }
+
+  next()
 }
 
 async function createTempImageFile(base64: string) {
