@@ -44,7 +44,7 @@ export async function calldb() {
 export async function addUser(customer_code: string) {
     const [result] = await pool.query(`
         INSERT INTO users (customer_code)
-        VALUES (?)
+        VALUES (?);
         `, [customer_code]);
 
     const insert = result as Insert_result;
@@ -73,7 +73,7 @@ export async function addMeasure(customer_code: string, measure_value: number, m
     
     const [result] = await pool.query(`
         INSERT INTO measures (user_id, measure_type,measure_datetime, measure_value, image_url)
-        VALUES (?,?,?,?,?)
+        VALUES (?,?,?,?,?);
         `, [user_uid, measure_type, measure_datetime, measure_value, image_url]);
 
     const insert = result as Insert_result;
@@ -114,4 +114,27 @@ export async function getSortedMeasuresFromUser(user_uid: number, type: string) 
     [user_uid, type]);
     
     return results
+}
+
+export async function verifyMeasureMonth(customer_code: string, measure_datetime: Date, measure_type: string) {
+    const user_array = await getUserFromCode(customer_code);
+
+    if (user_array.length == 0) {
+        return false
+    }
+
+    const user_uid = user_array[0].id;
+
+    const year = measure_datetime.getFullYear();
+    const month = measure_datetime.getMonth() + 1;
+    
+    const [results] = await pool.query<RowDataPacket[] & Measure[]>(
+        "SELECT * FROM measures WHERE EXTRACT(YEAR FROM measure_datetime) = (?) AND EXTRACT(MONTH FROM measure_datetime) = (?) AND user_id = (?) AND measure_type = (?);",
+    [year, month, user_uid, measure_type]);
+
+    if ((results as Measure[]).length == 0) {
+        return false
+    }
+
+    return true
 }

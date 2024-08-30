@@ -1,6 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import dotenv from 'dotenv';
-import {getUserFromCode, addMeasure, getMeasureFromId, confirmMeasure, getMeasuresFromUser, Measure, getSortedMeasuresFromUser} from "./dbconfig";
+import {getUserFromCode, addMeasure, getMeasureFromId, confirmMeasure, getMeasuresFromUser, Measure, getSortedMeasuresFromUser, verifyMeasureMonth} from "./dbconfig";
 import { GoogleAIFileManager } from "@google/generative-ai/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import path from "path";
@@ -30,7 +30,7 @@ app.patch('/confirm', verifyDataTypesConfirm, async (req, res) => {
   const measure = measure_array[0];
 
   if (measure.has_confirmed) {
-    res.status(404).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
+    res.status(409).json({error_code: "CONFIRMATION_DUPLICATE", error_description: "Leitura do mês já realizada"})
   }
   
   await confirmMeasure(measure.measure_uuid, confirmed_value)  
@@ -38,9 +38,13 @@ app.patch('/confirm', verifyDataTypesConfirm, async (req, res) => {
   res.status(200).json({success: true})
 });
 
-app.post('/upload', verifyDataTypesUpload, async (req, res) => {
+app.get('/upload', async (req, res) => {
   try {
     const { image, customer_code, measure_datetime, measure_type } = req.body;
+
+    if (await verifyMeasureMonth(customer_code, new Date(measure_datetime), measure_type)) {
+      res.status(409).json({ error_code: "DOUBLE_REPORT", error_description: "Leitura do mês já realizada" })
+    }
 
     const gen_ai = new GoogleGenerativeAI(GEMINI_API_KEY);
     const file_manager = new GoogleAIFileManager(GEMINI_API_KEY);
